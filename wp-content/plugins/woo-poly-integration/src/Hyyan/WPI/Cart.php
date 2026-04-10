@@ -221,8 +221,16 @@ class Cart
         /* remove the orginal wc-cart-fragments.js and register ours */
         wp_deregister_script('wc-cart-fragments');
         $suffix = defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? '' : '.min';
+        
+        $deps = array('jquery');
+        if (wp_script_is('jquery-cookie', 'registered')) {
+            $deps[] = 'jquery-cookie';
+        } elseif (wp_script_is('js-cookie', 'registered')) {
+            $deps[] = 'js-cookie';
+        }
+        
         wp_enqueue_script(
-            'wc-cart-fragments', plugins_url('public/js/Cart' . $suffix . '.js', Hyyan_WPI_DIR), array('jquery', 'jquery-cookie'), Plugin::getVersion(), true
+            'wc-cart-fragments', plugins_url('public/js/Cart' . $suffix . '.js', Hyyan_WPI_DIR), $deps, Plugin::getVersion(), true
         );
     }
 

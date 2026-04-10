@@ -51,7 +51,12 @@ jQuery( function( $ ) {
 
     /* Get current Polylang language */
     function get_pll_language() {
-        var pll_lang = $.cookie('pll_language');
+        var pll_lang = '';
+        if (typeof Cookies !== 'undefined') {
+            pll_lang = Cookies.get('pll_language');
+        } else if (typeof $.cookie !== 'undefined') {
+            pll_lang = $.cookie('pll_language');
+        }
 
         if (pll_lang === null || pll_lang === undefined || pll_lang === '') {
             pll_lang = '';

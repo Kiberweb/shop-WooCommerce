@@ -42,6 +42,16 @@ new Hyyan\WPI\Autoloader(__DIR__ . '/src/');
 /* bootstrap the plugin */
 new Hyyan\WPI\Plugin();
 
+/**
+ * Declare compatibility with WooCommerce High-Performance Order Storage (HPOS)
+ */
+add_action( 'before_woocommerce_init', function() {
+    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'cart_checkout_blocks', __FILE__, true );
+    }
+} );
+
 
 /*
  * called when plugin is activated in settings, plugins

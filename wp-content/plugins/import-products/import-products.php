@@ -4,52 +4,102 @@
  * Description: REST API for import products in multi languages by (Polylang)
  */
 
-if (!defined('ABSPATH')) {
-    exit;
+if (!defined("ABSPATH")) {
+    exit();
 }
 
-class MyImportProducts {
+class MyImportProducts
+{
     private int $created = 0;
     private int $updated = 0;
     private int $skipped = 0;
+    private string $_access_token = "99a77bca81c29e162c79b3e0723a5f84023b04c5781e61ba89489c75ac77f3c9";
 
-    public function __construct() {
-        add_action('rest_api_init', [$this, 'register_routes']);
+    public function __construct()
+    {
+        add_action("rest_api_init", [$this, "register_routes"]);
     }
 
-    public function register_routes(): void {
-        register_rest_route('test/v1', '/import-products', [
-            'methods' => 'POST',
-            'callback' => [$this, 'handle_import_products'],
-            'permission_callback' => function () {
-                return current_user_can('manage_options');
-            },
+    public function register_routes(): void
+    {
+        register_rest_route("test/v1", "/import-products", [
+            "methods" => "POST",
+            "callback" => [$this, "handle_import_products"],
+            // 'permission_callback' => '__return_true',
+            "permission_callback" => [$this, "access_with_barer_token"],
         ]);
     }
 
-    public function handle_import_products($request): array {
+    public function access_with_barer_token($request): bool|WP_Error
+    {
+        $auth_header = $request->get_header("Authorization");
+
+        if (!$auth_header || strpos($auth_header, "Bearer ") !== 0) {
+            return new WP_Error("rest_forbidden", "Bearer Token missing", [
+                "status" => 401,
+            ]);
+        }
+        # format Bearer {hash}:{user_id}
+        $token = str_replace("Bearer ", "", $auth_header);
+        $token = explode(":", $token);
+
+        if (count($token) != 2) {
+            return new WP_Error("rest_forbidden", "Invalid Token Format", [
+                "status" => 403,
+            ]);
+        }
+
+        $user = get_userdata((int) $token[1]);
+
+        if (!$user || !user_can($user, "manage_options")) {
+            return new WP_Error("rest_forbidden", "Access Denied", [
+                "status" => 403,
+            ]);
+        }
+
+        if (
+            !hash_equals(
+                $token[0],
+                hash_hmac(
+                    "sha256",
+                    $user->user_login . ":" . $user->ID,
+                    $this->_access_token,
+                ),
+            )
+        ) {
+            return new WP_Error("rest_forbidden", "Invalid Token Signature", [
+                "status" => 403,
+            ]);
+        }
+
+        wp_set_current_user($user->ID);
+
+        return true;
+    }
+
+    public function handle_import_products($request): array
+    {
         $this->created = 0;
         $this->updated = 0;
         $this->skipped = 0;
 
-        if (!function_exists('wc_get_product_id_by_sku')) {
-            return ['error' => 'WooCommerce not active'];
+        if (!function_exists("wc_get_product_id_by_sku")) {
+            return ["error" => "WooCommerce not active"];
         }
 
         $items = $request->get_json_params();
 
         if (!is_array($items)) {
-            return ['error' => 'Invalid JSON'];
+            return ["error" => "Invalid JSON"];
         }
 
         foreach ($items as $item) {
-
-            if (empty($item['sku'])) {
+            if (empty($item["sku"])) {
                 $this->skipped++;
                 continue;
             }
 
-            $sku = sanitize_text_field($item['sku']);
+            $sku = sanitize_text_field($item["sku"]);
             $product_id = wc_get_product_id_by_sku($sku);
 
             if ($product_id) {
@@ -60,18 +110,18 @@ class MyImportProducts {
         }
 
         return [
-            'created' => $this->created,
-            'updated' => $this->updated,
-            'skipped' => $this->skipped,
-            'meta' => [
-                'total' => count($items),
-                'time' => current_time('mysql'),
+            "created" => $this->created,
+            "updated" => $this->updated,
+            "skipped" => $this->skipped,
+            "meta" => [
+                "total" => count($items),
+                "time" => current_time("mysql"),
             ],
         ];
     }
 
-    private function update_product(int $product_id, array $item): void {
-
+    private function update_product(int $product_id, array $item): void
+    {
         $product = wc_get_product($product_id);
 
         if (!$product) {
@@ -79,39 +129,40 @@ class MyImportProducts {
             return;
         }
 
-        if (!empty($item['name'])) {
-            $product->set_name($item['name']);
+        if (!empty($item["name"])) {
+            $product->set_name($item["name"]);
         }
 
-        if (isset($item['price'])) {
-            $product->set_regular_price((float) $item['price']);
+        if (isset($item["price"])) {
+            $product->set_regular_price((float) $item["price"]);
         }
 
-        if (isset($item['stock'])) {
-            $product->set_stock_quantity((int) $item['stock']);
+        if (isset($item["stock"])) {
+            $product->set_stock_quantity((int) $item["stock"]);
             $product->set_manage_stock(true);
         }
 
         $product->save();
 
-        if (function_exists('pll_get_post')) {
-            $en_id = pll_get_post($product_id, 'en');
+        if (function_exists("pll_get_post")) {
+            $en_id = pll_get_post($product_id, "en");
 
             if ($en_id) {
                 $en_product = wc_get_product($en_id);
 
                 if ($en_product) {
-
-                    if (!empty($item['translations']['en']['name'])) {
-                        $en_product->set_name($item['translations']['en']['name']);
+                    if (!empty($item["translations"]["en"]["name"])) {
+                        $en_product->set_name(
+                            $item["translations"]["en"]["name"],
+                        );
                     }
 
-                    if (isset($item['price'])) {
-                        $en_product->set_regular_price((float) $item['price']);
+                    if (isset($item["price"])) {
+                        $en_product->set_regular_price((float) $item["price"]);
                     }
 
-                    if (isset($item['stock'])) {
-                        $en_product->set_stock_quantity((int) $item['stock']);
+                    if (isset($item["stock"])) {
+                        $en_product->set_stock_quantity((int) $item["stock"]);
                         $en_product->set_manage_stock(true);
                     }
 
@@ -123,48 +174,49 @@ class MyImportProducts {
         $this->updated++;
     }
 
-    private function create_product(array $item): void {
-
+    private function create_product(array $item): void
+    {
         $product = new WC_Product_Simple();
 
-        $product->set_name($item['name'] ?? 'No name');
-        $product->set_sku(sanitize_text_field($item['sku']));
-        $product->set_regular_price((float) ($item['price'] ?? 0));
+        $product->set_name($item["name"] ?? "No name");
+        $product->set_sku(sanitize_text_field($item["sku"]));
+        $product->set_regular_price((float) ($item["price"] ?? 0));
 
-        if (isset($item['stock'])) {
-            $product->set_stock_quantity((int) $item['stock']);
+        if (isset($item["stock"])) {
+            $product->set_stock_quantity((int) $item["stock"]);
             $product->set_manage_stock(true);
         }
 
         $product_id = $product->save();
 
         // UA язык
-        if (function_exists('pll_set_post_language')) {
-            pll_set_post_language($product_id, 'uk');
+        if (function_exists("pll_set_post_language")) {
+            pll_set_post_language($product_id, "uk");
         }
 
         // EN перевод
-        $en_name = $item['translations']['en']['name'] ?? $item['name'] ?? 'No name';
+        $en_name =
+            $item["translations"]["en"]["name"] ?? ($item["name"] ?? "No name");
 
         $en_product = new WC_Product_Simple();
         $en_product->set_name($en_name);
-        $en_product->set_sku($item['sku'] . '-en');
-        $en_product->set_regular_price((float) ($item['price'] ?? 0));
+        $en_product->set_sku($item["sku"] . "-en");
+        $en_product->set_regular_price((float) ($item["price"] ?? 0));
 
-        if (isset($item['stock'])) {
-            $en_product->set_stock_quantity((int) $item['stock']);
+        if (isset($item["stock"])) {
+            $en_product->set_stock_quantity((int) $item["stock"]);
             $en_product->set_manage_stock(true);
         }
 
         $en_id = $en_product->save();
 
         // Связка переводов
-        if (function_exists('pll_set_post_language')) {
-            pll_set_post_language($en_id, 'en');
+        if (function_exists("pll_set_post_language")) {
+            pll_set_post_language($en_id, "en");
 
             pll_save_post_translations([
-                'uk' => $product_id,
-                'en' => $en_id,
+                "uk" => $product_id,
+                "en" => $en_id,
             ]);
         }
 
